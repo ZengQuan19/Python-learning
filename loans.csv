@@ -1,0 +1,16 @@
+loan_id,age,income,job,has_house,education,approved
+L001,25,8000,engineer,yes,bachelor,yes
+L002,45,20000,doctor,yes,master,yes
+L003,22,3000,waiter,no,highschool,no
+L004,35,12000,teacher,yes,master,yes
+L005,28,6000,sales,no,bachelor,no
+L006,52,30000,doctor,yes,phd,yes
+L007,23,4000,sales,no,bachelor,no
+L008,40,15000,engineer,yes,bachelor,yes
+L009,31,7000,teacher,no,master,no
+L010,48,25000,engineer,yes,master,yes
+L011,26,5000,waiter,no,highschool,no
+L012,38,18000,doctor,yes,master,yes
+L013,29,6500,teacher,?,bachelor,no
+L014,55,40000,doctor,yes,phd,yes
+L015,24,4500,sales,no,highschool,no

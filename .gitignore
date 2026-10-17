@@ -1,0 +1,17 @@
+# Python 项目的 .gitignore —— 告诉 git「这些文件不要提交」
+# 语法：每行一个规则；/ 结尾表示目录
+
+# 虚拟环境：391 MB、几万个文件，绝对不能提交
+# 别人 clone 下来自己建 venv 就行：python -m venv .venv
+.venv/
+
+# Python 运行时生成的缓存
+__pycache__/
+*.py[cod]
+
+# PyCharm 的项目配置（每个人的路径都不一样，提交了会互相覆盖）
+.idea/
+
+# 系统垃圾文件
+.DS_Store
+Thumbs.db
