@@ -203,35 +203,49 @@ print()
 # TODO 1【读全表】：把 orders 全表读成 DataFrame，存给 df_orders
 #         然后把 order_date 转成 pandas 的日期类型（pd.to_datetime）
 #         要求：读完之后 df_orders["order_date"].dtype 应该是 datetime64 类型
-df_orders = None
-
+df_orders = pd.read_sql("SELECT * FROM orders", engine)
+df_orders["order_date"] = pd.to_datetime(df_orders["order_date"])
 # TODO 2【用 pandas 算月度 GMV】：只算有效订单（paid / pending）
 #         按「月」分组求和，结果存给 gmv_pd
 #         要求：index 是月（用 dt.to_period("M")），值是金额
 #         提示：先筛 valid，再 groupby
-gmv_pd = None
-
+valid = df_orders[df_orders.status.isin(["paid", "pending"])]
+gmv_pd = valid.groupby(valid["order_date"].dt.to_period("M"))["amount"].sum()
 # TODO 3【用 pandas 算环比】：在上一步基础上算百分比环比，保留 1 位小数
 #         结果存给 mom_pd（第一行会是 NaN，正常）
 #         提示：一个 pct_change() 就够
-mom_pd = None
+mom_pd = (gmv_pd.pct_change() *100).round(1)
 
 # TODO 4【用纯 SQL 算一遍并对账】：
 #         - 用一条 SQL（WITH + LAG）算出 ym / gmv / 环比，存给 mom_sql（DataFrame）
 #         - 然后比较两边的 gmv 是否完全一致，结果存给 same（True / False）
 #         提示：DataFrame 的列可以用 mom_sql["gmv"] 取出来
-mom_sql = None
-same = None
+mom_sql = pd.read_sql(
+    """WITH t AS (SELECT SUM(amount) AS gmv , DATE_FORMAT(order_date, '%%Y-%%m') AS ym
+                    FROM orders
+                    WHERE status IN ('paid' , 'pending')
+                    GROUP BY ym)
+    SELECT ym, gmv, ROUND((gmv - LAG(gmv) OVER(ORDER BY ym)) * 100.0 / LAG(gmv) OVER(ORDER BY ym), 1)
+    FROM t
+    ORDER BY ym""", engine)
+
+same = gmv_pd.round(2).tolist() == mom_sql["gmv"].astype(float).round(2).tolist()
 
 # TODO 5【结果落表】：把 gmv_pd 和 mom_pd 拼成一个 DataFrame（三列：ym / gmv / mom_pct），
 #         用 to_sql 写进 MySQL 的 monthly_gmv 表（存在就替换），
 #         再把表读回来存给 back_rows（DataFrame）
 #         提示：Period 索引转字符串用 str(p)
-back_rows = None
+out = pd.DataFrame({
+    "ym" : [str(p) for p in gmv_pd.index],
+    "gmv": gmv_pd.values,
+    "mom_pct": mom_pd.values
+})
+out.to_sql("monthly_gmv", engine, if_exists="replace", index=False)
+back_rows = pd.read_sql("SELECT * FROM monthly_gmv ORDER BY ym", engine)
 
 # TODO 6（不写代码，写在注释里）：
 #         举两个你自己的例子：什么任务你会用 SQL 做，什么任务你会用 pandas 做？
-# 你的答案：
+# 你的答案：取数，筛选和需要在业务中使用的数据用sql，计算，训练等用pandas做
 
 
 # ------------------------------------------------------------
