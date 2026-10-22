@@ -383,14 +383,14 @@ rows_mom_mysql = cur.fetchall()
 #         提示：ROW_NUMBER() 在 MySQL 8 里用法和 SQLite 一样
 cur.execute(
     """WITH t AS (SELECT u.city AS City, u.user_id, u.name, COUNT(o.order_id) AS n,
-                ROW_NUMBER() OVER (PARTITION BY u.city ORDER BY COUNT(o.order_id), u.user_id) AS rn
+                ROW_NUMBER() OVER (PARTITION BY u.city ORDER BY COUNT(o.order_id) DESC, u.user_id) AS rn
     FROM users u
     LEFT JOIN orders o ON o.user_id = u.user_id
     GROUP BY u.user_id)
     SELECT City, user_id, name, n
     FROM t
     WHERE rn = 1
-    ORDER BY City DESC 
+    ORDER BY City
     """
 )
 rows_city_top_mysql = cur.fetchall()
