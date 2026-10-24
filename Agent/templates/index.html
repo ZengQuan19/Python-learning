@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<!--
+  Agent/templates/index.html —— v1 的首页模板
+  注意两点：
+    1. 这个文件必须在 templates/ 目录里，Flask 默认只去那里找模板
+    2. 文件里 {{ title }} 是 Jinja2 的"填空"，由 Python 那边 render_template(..., title=...) 填进来
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+</head>
+<body>
+  <h1>{{ title }}</h1>
+  <p>问一个关于订单数据的问题，比如：哪个用户花钱最多？</p>
+
+  <!--
+    form 表单 = 收集输入并提交给服务器的容器。
+      method="get"  -> 提交时把数据拼到 URL 后面：/?q=你输入的内容
+      method="post" -> 数据放在请求体里，URL 上看不见（v2 会用到）
+      action="/"    -> 提交给哪个地址，这里就是本页
+    input 必须写 name="q"，服务器才知道"这段数据叫 q"
+    button type="submit" 才会触发提交（在输入框里按回车也一样）
+  -->
+  <form method="get" action="/">
+    <input type="text" name="q" placeholder="输入你的问题" size="50">
+    <button type="submit">提问</button>
+  </form>
+
+  <hr>
+
+  <!-- 结果区：显示"你问的问题"和"查询结果"，写法见 app.py ⑧ 区 TODO B -->
+  <div id="result">
+    {# TODO B：在这里写 Jinja 条件块。
+       提示：q 是问题字符串（可能为空），result 是一个 dict 或 None。
+       语法速查：{% if 条件 %} ... {% elif ... %} ... {% else %} ... {% endif %}
+       变量输出：{{ q }}、{{ result.name }}、{{ result.total }} #}
+    {% if q %}
+      <p>你问的是:{{ q }}</p><p>查询结果:{{ result }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>
