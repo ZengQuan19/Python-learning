@@ -1,0 +1,113 @@
+/* ============================================================
+   Agent/static/style.css —— v1 的样式表
+   
+   放在 static/ 目录里，Flask 会自动把它挂到 URL /static/ 下：
+     文件  Agent/static/style.css
+     网址  http://127.0.0.1:5000/static/style.css
+   所以模板里不需要写死路径，用 url_for('static', filename='style.css') 生成就行。
+
+   CSS 是什么：给 HTML 的标签"化妆"的语言。
+     HTML 管"这里是一级标题"，CSS 管"它多大、什么颜色、离周围多远"。
+     选择器 h1 { } 表示"所有 <h1> 标签"，#result { } 表示 id="result" 的那个。
+   ============================================================ */
+
+/* :root 里放"全局变量"，后面用 var(--名字) 引用。
+   好处：以后想换主色，只改这一行。 */
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --ink: #1f2328;
+  --muted: #6b7280;
+  --accent: #2f6fed;
+  --line: #d0d5dd;
+}
+
+/* * 表示"所有标签"。box-sizing 让 padding 算进宽度里，排版不容易错位。 */
+* {
+  box-sizing: border-box;
+}
+
+/* body 是页面主体：控制整体宽度、居中、字体、背景。 */
+body {
+  max-width: 760px;
+  margin: 40px auto;          /* 上下 40px，左右自动（水平居中） */
+  padding: 0 16px;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+}
+
+/* 表单：flex 让输入框和按钮排在一行，gap 是它们之间的空隙。 */
+form {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0;
+}
+
+input[type="text"] {
+  flex: 1;                    /* 占满剩余的宽度 */
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+input[type="text"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  padding: 10px 20px;
+  font-size: 15px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1f5cd6;
+}
+
+/* 结果区：浅蓝底色 + 左侧色条，一眼能看出"这是答案"。 */
+#result {
+  margin-top: 24px;
+  padding: 16px 18px;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  background: #f0f4ff;
+}
+
+#result:empty {
+  display: none;              /* 没有内容时整个结果区不占位 */
+}
+
+#result p {
+  margin: 6px 0;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 24px 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #eef1f5;
+  font-size: 14px;
+}

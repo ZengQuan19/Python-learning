@@ -8,7 +8,15 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
+  <!--
+    url_for('static', filename='style.css') 会生成 /static/style.css 这个网址。
+    为什么不直接写 "/static/style.css"：
+      Flask 知道静态文件挂在哪个前缀下，用函数生成不会写错，以后要改也只改一处。
+    渲染后这一行长这样：<link rel="stylesheet" href="/static/style.css">
+  -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <h1>{{ title }}</h1>
@@ -31,12 +39,19 @@
 
   <!-- 结果区：显示"你问的问题"和"查询结果"，写法见 app.py ⑧ 区 TODO B -->
   <div id="result">
-    {# TODO B：在这里写 Jinja 条件块。
-       提示：q 是问题字符串（可能为空），result 是一个 dict 或 None。
-       语法速查：{% if 条件 %} ... {% elif ... %} ... {% else %} ... {% endif %}
-       变量输出：{{ q }}、{{ result.name }}、{{ result.total }} #}
+    {# TODO（v1 收尾）：把下面这段从"打印整个 dict"改成"给人看的一句话"。
+       现在页面显示的是 {'user_id': 11, 'name': '孙悦', ...} —— 字典的原始样子，
+       程序看得懂，人看不懂。改成用字段拼人话：
+         {% if result %} ... {% else %} ... {% endif %}   —— 有数据 / 没数据两种情况
+         姓名 result.name、城市 result.city、总额 result.total、单数 result.orders
+       提示：Jinja 里 dict 的键可以用点访问（result.name 等价于 result["name"]）
+       提示：金额 4112.0 想显示成 4112.00，可以写 {{ "%.2f"|format(result.total) }} #}
     {% if q %}
-      <p>你问的是:{{ q }}</p><p>查询结果:{{ result }}</p>
+      {% if result %}
+        <p>你问的是:{{ q }}</p>
+        <p>查询结果:</p>
+        <p>花钱最多的是{{ result.name }}({{result.city}})，已支付{{"%.2f" | format(result.total)}}元，共{{result.orders}}单。</p>
+      {% endif %}
     {% endif %}
   </div>
 </body>
