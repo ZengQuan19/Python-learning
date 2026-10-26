@@ -20,3 +20,6 @@ Thumbs.db
 dbconfig.py
 *.env
 
+# 大模型 API key 配置（里面有密钥）—— 绝对不能提交
+llm_config.py
+
