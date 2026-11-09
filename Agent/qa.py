@@ -84,14 +84,14 @@ def run_question(question):
         return {"question": question,
                 "sql": None,
                 "rows":None,
-                "error": e,
+                "error": str(e),
                 "explain":""}
     ok, reason = check_sql(sql)
     if not ok:
         return {"question": question,
                 "sql": sql,
                 "rows":None,
-                "error": reason,
+                "error": str(reason),
                 "explain":""}
     try:
         rows = run_select(sql)
@@ -99,7 +99,7 @@ def run_question(question):
         return {"question": question,
                 "sql": sql,
                 "rows":None,
-                "error": e,
+                "error": str(e),
                 "explain":""}
     try:
         explain_text, usage = explain(question, sql, rows)
@@ -108,11 +108,11 @@ def run_question(question):
         return {"question": question,
                 "sql": sql,
                 "rows":rows[0],
-                "error": e,
+                "error": str(e),
                 "explain":""}
     return {"question": question,
             "sql": sql,
-            "rows":rows[0],
+            "rows":rows,
             "error": None,
             "explain":explain_text}
 
@@ -132,33 +132,49 @@ def selfcheck():
         print("\nFAIL：run_question() 还没返回东西，去 ② 区写 TODO")
         return
 
+    # ⚠️ 契约检查要看"类型"，不能只看"有没有值"。
+    #    之前这里写 len(data["rows"])，结果 rows 是 dict 时 len 数的是键的个数，
+    #    看着有数、其实形状已经错了，页面渲染才会炸。
+    rows = data.get("rows")
+    rows_type_ok = isinstance(rows, list) and all(isinstance(r, dict) for r in rows)
+
     print("\n① SQL      :", data.get("sql"))
-    print("② 行数     :", len(data["rows"]) if data.get("rows") else 0)
-    print("③ 数据     :", data.get("rows"))
+    print("② 行数     :", len(rows) if isinstance(rows, list) else f"类型错误({type(rows).__name__})")
+    print("③ 数据     :", rows)
     print("④ 错误     :", data.get("error"))
     print("⑤ 人话解释 :", data.get("explain"))
+    print("⑥ rows 类型 :", type(rows).__name__, "| 期望 list（元素是 dict），否则页面画不出表格")
+    if not rows_type_ok:
+        print("   ↑ FAIL：契约要求 list[dict]。如果你写了 rows[0]，页面会报 dict object has no element 0")
 
-    ok = bool(data.get("sql")) and not data.get("error") and bool(data.get("rows"))
+    ok = bool(data.get("sql")) and not data.get("error") and rows_type_ok and bool(rows)
     print("\n正常链路判定:", "PASS" if ok else "FAIL")
 
     # ---- 错误路径：假装模型写了一条危险 SQL ----
+    # ⚠️ 坑：这里不能写 import qa 然后 qa.ask_sql = ...
+    #    因为文件被当脚本运行时，本模块叫 __main__，import qa 会再加载一次，
+    #    变成两个模块对象，patch 的那个 qa.ask_sql 根本不是 run_question 用的那个。
+    #    正确做法：直接在"当前模块的全局变量"上换，run_question 查的就是它。
     print("\n--- 模拟：模型写出了 DROP TABLE ---")
-    import qa
-    original = qa.ask_sql
-    qa.ask_sql = lambda q: {"sql": "DROP TABLE users", "raw": "DROP TABLE users"}
+    g = globals()
+    original = g["ask_sql"]
+    g["ask_sql"] = lambda q: {"sql": "DROP TABLE users", "raw": "DROP TABLE users"}
     try:
         bad = run_question("把用户表删了")
     finally:
-        qa.ask_sql = original
+        g["ask_sql"] = original
 
     print("返回:", bad)
     if not bad:
         print("FAIL：错误路径没有返回 dict")
         return
+
+    print("SQL 是否就是那条危险语句:", bad.get("sql") == "DROP TABLE users",
+          "| 若为 False，说明上面的 patch 没生效，测试是假的")
     guard_ok = (bad.get("error") is not None) and (bad.get("rows") is None)
     print("错误路径判定:", "PASS" if guard_ok else "FAIL（危险 SQL 没被拦下）")
 
-    print("\n两段都 PASS，说明流水线接好了：问题 -> SQL -> 审核 -> 数据 -> 解释。")
+    print("\n最终判定:", "PASS" if (ok and guard_ok) else "FAIL（上面还有 FAIL 项，先修它再往下走）")
 
 
 if __name__ == "__main__":
