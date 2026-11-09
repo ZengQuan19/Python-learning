@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <!--
-  Agent/templates/index.html —— v1 的首页模板
+  Agent/templates/index.html —— v2 的首页模板
   注意两点：
     1. 这个文件必须在 templates/ 目录里，Flask 默认只去那里找模板
-    2. 文件里 {{ title }} 是 Jinja2 的"填空"，由 Python 那边 render_template(..., title=...) 填进来
+    2. {{ title }}、{{ q }}、{{ data }} 是 Jinja2 的"填空"，由 Python 那边 render_template(...) 填进来
 -->
 <html lang="zh-CN">
 <head>
@@ -12,45 +12,81 @@
   <title>{{ title }}</title>
   <!--
     url_for('static', filename='style.css') 会生成 /static/style.css 这个网址。
-    为什么不直接写 "/static/style.css"：
-      Flask 知道静态文件挂在哪个前缀下，用函数生成不会写错，以后要改也只改一处。
-    渲染后这一行长这样：<link rel="stylesheet" href="/static/style.css">
+    为什么不直接写 "/static/style.css"：Flask 知道静态文件挂在哪，用函数生成不会写错。
   -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <h1>{{ title }}</h1>
-  <p>问一个关于订单数据的问题，比如：哪个用户花钱最多？</p>
+  <p>用中文提问，模型会自己写 SQL 去查。比如：哪个用户花钱最多？各城市有效订单总额是多少？</p>
 
   <!--
     form 表单 = 收集输入并提交给服务器的容器。
       method="get"  -> 提交时把数据拼到 URL 后面：/?q=你输入的内容
-      method="post" -> 数据放在请求体里，URL 上看不见（v2 会用到）
       action="/"    -> 提交给哪个地址，这里就是本页
     input 必须写 name="q"，服务器才知道"这段数据叫 q"
     button type="submit" 才会触发提交（在输入框里按回车也一样）
   -->
   <form method="get" action="/">
-    <input type="text" name="q" placeholder="输入你的问题" size="50">
+    <input type="text" name="q" placeholder="输入你的问题" size="50" value="{{ q }}">
     <button type="submit">提问</button>
   </form>
 
+  <p class="hint">首次提问要等 2~10 秒：程序会调两次模型（一次写 SQL、一次解释结果）。</p>
+
   <hr>
 
-  <!-- 结果区：显示"你问的问题"和"查询结果"，写法见 app.py ⑧ 区 TODO B -->
+  <!-- ============ 结果区 ============
+       data 是 qa.run_question() 返回的 dict，形状固定：
+         {"question": ..., "sql": ..., "rows": ..., "error": ..., "explain": ...}
+       所以模板只做三件事：有 SQL 就显示 SQL、有 error 就显示错误、有 rows 就画表格。
+       （id="result" 这个容器在 style.css 里有样式；没内容时用 :empty 自动隐藏） -->
   <div id="result">
-    {# TODO（v1 收尾）：把下面这段从"打印整个 dict"改成"给人看的一句话"。
-       现在页面显示的是 {'user_id': 11, 'name': '孙悦', ...} —— 字典的原始样子，
-       程序看得懂，人看不懂。改成用字段拼人话：
-         {% if result %} ... {% else %} ... {% endif %}   —— 有数据 / 没数据两种情况
-         姓名 result.name、城市 result.city、总额 result.total、单数 result.orders
-       提示：Jinja 里 dict 的键可以用点访问（result.name 等价于 result["name"]）
-       提示：金额 4112.0 想显示成 4112.00，可以写 {{ "%.2f"|format(result.total) }} #}
     {% if q %}
-      {% if result %}
-        <p>你问的是:{{ q }}</p>
-        <p>查询结果:</p>
-        <p>花钱最多的是{{ result.name }}({{result.city}})，已支付{{"%.2f" | format(result.total)}}元，共{{result.orders}}单。</p>
+      <p class="ask">你问的是：{{ q }}</p>
+
+      {# ① 生成的 SQL：用 <details> 折起来，默认展开，用户想看得更细可以点 #}
+      {% if data and data.sql %}
+        <details open>
+          <summary>模型生成的 SQL</summary>
+          <pre><code>{{ data.sql }}</code></pre>
+        </details>
+      {% endif %}
+
+      {# ② 出错：被安全闸拦下、SQL 语法错、模型调用失败，都在 error 里 #}
+      {% if data and data.error %}
+        <p class="error">出错了：{{ data.error }}</p>
+
+      {# ③ 有数据：画表格。列名从第一行的键里拿，行数不定，所以用两层 for #}
+      {% elif data and data.rows %}
+        <table>
+          <thead>
+            <tr>
+              {% for col in data.rows[0].keys() %}
+                <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in data.rows %}
+              <tr>
+                {% for col in data.rows[0].keys() %}
+                  <td>{{ row[col] }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <p class="hint">共 {{ data.rows|length }} 行</p>
+
+      {# ④ 查询成功但没数据 #}
+      {% elif data %}
+        <p>查询没有返回数据。</p>
+      {% endif %}
+
+      {# ⑤ 人话解释（第二次模型调用的结果） #}
+      {% if data and data.explain %}
+        <div class="explain"><strong>结论：</strong>{{ data.explain }}</div>
       {% endif %}
     {% endif %}
   </div>

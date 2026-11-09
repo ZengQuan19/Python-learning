@@ -27,6 +27,11 @@
 
 from flask import Flask, jsonify, render_template, request
 
+# 编排层：问题 -> SQL -> 审核 -> 数据 -> 解释，整条流水线在 qa.py 里。
+# 注意：import qa 会连带 import llm -> llm_config，所以没填 API key 时
+#       服务会直接启动失败并给出提示（这是故意的，别带着空 key 跑）。
+from qa import run_question
+
 # Flask(__name__) 的意思是"建一个网站对象，名字叫当前文件"。
 # 这个名字后面用来找 templates/、static/ 目录，现在不用深究。
 app = Flask(__name__)
@@ -45,10 +50,10 @@ app.json.ensure_ascii = False
 # 函数 return 的字符串，就是浏览器里看到的东西。
 @app.route("/")
 def index():
-    from db import top_user
-    q = request.args.get("q","").strip()
-    result = top_user() if q else None
-    return render_template("index.html", title = "数据分析 Agent v1",q = q, result = result)
+    # v2：问题交给 qa.run_question() 走完整条流水线
+    q = request.args.get("q", "").strip()
+    data = run_question(q) if q else None
+    return render_template("index.html", title="数据分析 Agent v2", q=q, data=data)
 
 
 @app.route("/ping")
@@ -226,7 +231,7 @@ def check_page():
     print("② Content-Type   :", resp.headers.get("Content-Type"), "| 期望含 text/html")
     print("③ 有 <form 吗    :", "<form" in html, "| 期望 True")
     print('④ 有 name="q" 吗 :', 'name="q"' in html, "| 期望 True")
-    print("⑤ 标题填上了吗    :", "数据分析 Agent v1" in html, "| 期望 True")
+    print("⑤ 标题填上了吗    :", "数据分析 Agent" in html, "| 期望 True")
     print("   页面开头预览:", html.strip().splitlines()[:3])
     if "<form" not in html:
         print("   提示：/ 还在 return 字符串，去 ① 区把 index() 改成 render_template")
@@ -275,26 +280,21 @@ def echo():
 
 
 # ------------------------------------------------------------
-# ⑨ 自检区（里程碑 3b，不用改）
+# ⑨ 自检区（v2-3，不用改）
 # ------------------------------------------------------------
-def check_v1_flow():
-    print("===== 里程碑 3b 自检 =====")
-    # 问题前面加"测试问题："，避免和页面上那句示例文字撞车（撞了会误判成"已回显"）
-    question = "测试问题：哪个用户花钱最多"
+# 为什么这里不测"完整问答链路"：
+#   一次提问 = 2 次模型调用 + 2~10 秒。
+#   如果每次启动服务都跑一遍，开发时改一行代码（debug 自动重启）就要花钱、等半天。
+#   所以：启动自检只查"页面结构对不对"，真正的链路用 python Agent\qa.py 单独验。
+def check_v2_page():
+    print("===== v2-3 页面自检（不调模型）=====")
     with app.test_client() as client:
-        plain = client.get("/")
-        resp = client.get("/?q=" + question)
+        resp = client.get("/")
     html = resp.get_data(as_text=True)
-
-    print("① 首页（不带 q）  :", plain.status_code, "| 期望 200")
-    print("② 带问题访问       :", resp.status_code, "| 期望 200")
-    print("③ 页面回显了问题吗 :", question in html, "| 期望 True")
-    print("④ 显示了用户名吗   :", "孙悦" in html, "| 期望 True")
-    print("⑤ 显示了金额吗     :", "4112" in html, "| 期望 True")
-    if question not in html:
-        print("   ③ 失败：index() 没把 q 传给模板，或模板里没有显示 q 的 Jinja 块")
-    if "孙悦" not in html:
-        print("   ④ 失败：index() 没把 result 传给模板，或模板里没显示 result")
+    print("① GET / 状态码   :", resp.status_code, "| 期望 200")
+    print('② 有输入框        :', 'name="q"' in html, "| 期望 True")
+    print('③ 有结果区容器    :', 'id="result"' in html, "| 期望 True")
+    print("   完整链路请跑：.venv\\Scripts\\python.exe Agent\\qa.py")
     print()
 
 
@@ -304,7 +304,7 @@ if __name__ == "__main__":
     selfcheck()
     check_json_api()
     check_page()
-    check_v1_flow()
+    check_v2_page()
     # debug=True：改完代码保存后服务器自动重启，刷新浏览器就能看到新内容；
     #             出错时浏览器里直接显示报错堆栈，对新手非常有用。
     # 注意：debug 模式改代码保存后会自动重启，所以自检可能打印多遍，正常现象。

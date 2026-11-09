@@ -111,3 +111,82 @@ code {
   background: #eef1f5;
   font-size: 14px;
 }
+
+/* ============ v2 新增：SQL 代码块、结果表格、错误提示、结论 ============ */
+
+details {
+  margin: 12px 0;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+pre {
+  margin: 8px 0 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: #1f2328;
+  color: #e6edf3;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* pre 里的 code 不要再叠一层底色 */
+pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+th {
+  background: #eef2f8;
+  font-weight: 600;
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.ask {
+  margin: 4px 0 12px;
+  color: var(--muted);
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.error {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fdecec;
+  color: #b42318;
+}
+
+.explain {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: #ecfdf3;
+  border-left: 4px solid #12b76a;
+}

@@ -178,32 +178,94 @@ FORBIDDEN_KEYWORDS = (
 def check_sql(sql):
     """审核模型给的 SQL，返回 (是否通过: bool, 原因: str)。
 
-    实现提示（按顺序写，任何一条不过就 return False, "原因"）：
-      1. s = (sql or "").strip()，空就返回 False
-      2. 如果 s 以 ";" 结尾，去掉它；然后如果 s 里还有 ";" -> 多条语句，拒绝
-      3. s.upper() 必须以 "SELECT" 或 "WITH" 开头
-      4. 遍历 FORBIDDEN_KEYWORDS，任一出现在 s.upper() 里就拒绝
-      5. 用 re.findall 把表名抠出来，逐个检查是否在 ALLOWED_TABLES：
-           re.findall(r"(?:from|join)\\s+([a-zA-Z_][a-zA-Z0-9_]*)", s, re.I)
-         有不在白名单里的 -> 拒绝
-      6. 全过 -> return True, "OK"
+    这个函数拆成 5 关，一关一句 if，全过就到最后的 return True, "OK"。
+    第 1 关我写好了，当作示范；2~5 关你来补。
+    每补一关，就跑一次 python Agent\\db.py，看 ⑤ 区对应的用例变 OK。
     """
-    # TODO: 按上面的提示实现
-    return False, "TODO: 还没写校验"
+    s = (sql or "").strip()
+
+    # ---- 第 1 关：空语句（已写好，示范用）----
+    if not s:
+        return False, "空语句"
+
+    # ---- 第 2 关：结尾一个分号要容忍，正文里还有分号就是多条语句 ----
+    # 两小步：
+    #   ① if s.endswith(";"):  s = s[:-1].strip()      （s[:-1] = 去掉最后一个字符）
+    #   ② if ";" in s: return False, "不允许多条语句"
+    # TODO-2
+    if s.endswith(";"): s = s[:-1].strip()
+    if ";" in s : return False, "语句中含分号或为多条语句"
+
+    # ---- 第 3 关：必须以 SELECT 或 WITH 开头 ----
+    # 提示：up = s.upper()，然后 if not (up.startswith("SELECT") or up.startswith("WITH"))
+    #       为什么先 upper：模型可能全大写、全小写、混着写，统一转大写再比
+    # TODO-3
+    up = s.upper()
+    if not (up.startswith("SELECT") or up.startswith("WITH")): return False, "语句不以SELECT或WITH开头"
+
+    # ---- 第 4 关：禁用关键字 ----
+    # 提示：for kw in FORBIDDEN_KEYWORDS:
+    #           if kw.strip().upper() in up: return False, f"包含禁用关键字: {kw}"
+    # 注意 "set " 后面带空格，是为了别误伤 "offset" 这类正常词
+    # TODO-4
+    for kw in FORBIDDEN_KEYWORDS:
+        if kw.strip().upper() in up: return False, f"包含禁用关键字:{kw}"
+
+    # ---- 第 5 关：表名白名单 ----
+    # 提示：tables = re.findall(r"(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)", s, re.I)
+    #       然后 for t in tables: if t.lower() not in ALLOWED_TABLES: return False, ...
+    # 为什么用正则：表名藏在 SQL 文本里，只能"抠出来"再逐个核对
+    # TODO-5
+    tables = re.findall(r"(?:from|join)\s+([a-zA-Z_][a-zA-Z0-9_]*)", s, re.I)
+    for t in tables:
+        if t.lower() not in ALLOWED_TABLES:
+            return False, f"禁止访问的列表:{t}"
+
+    # ---- 五关全过才放行 ----
+    # ⚠️ 现在 2~5 关还是空的，所以先保持"默认拒绝"（fail-closed）：
+    #    安全闸没写完 = 一道门都没装，绝不能放行。
+    #    等你把 2~5 关补完、自检里那 3 条"期望放行"变 OK 之后，
+    #    再把下面这一行改成：  return True, "OK"
+    return True, "OK"
 
 
 def run_select(sql, limit=100):
-    """先过 check_sql，再执行，返回 list[dict]。
+    """先过安全闸，再执行，返回 list[dict]（DictCursor 给的每一行都是 dict）。
 
-    实现提示：
-      1. ok, reason = check_sql(sql)；不通过就 raise ValueError(reason)
-      2. 去掉结尾分号；如果 SQL 里没有 LIMIT（用 re.search(r"\\blimit\\b", s, re.I) 判断），
-         就在末尾追加 f" LIMIT {limit}"，防止 SELECT * 把整张表拉进内存
-      3. 用 get_conn() 连库 -> cursor -> execute -> fetchall -> close
-         注意：连接一定要关，否则连接数会攒满（后面接 Flask 会反复调这个函数）
+    分 3 步写，每步都不长。
     """
-    # TODO: 实现
-    return None
+    # ---- 第 1 步：过闸门 ----
+    # ok, reason = check_sql(sql)
+    # if not ok: raise ValueError(f"SQL 未通过安全校验: {reason}")
+    # 为什么 raise：这层不该自己决定"怎么办"，让调用方（页面）去显示错误。
+    # TODO-1
+    ok, reason = check_sql(sql)
+    if not ok:
+        raise  ValueError(f"SQL 未通过安全校验{reason}")
+    # ---- 第 2 步：清洗 SQL ----
+    # 去掉结尾分号（有就删）；然后用 re.search(r"\blimit\b", s, re.I) 判断有没有 LIMIT，
+    # 没有就 s = s + f" LIMIT {limit}"
+    # 为什么补 LIMIT：模型可能写 SELECT * FROM orders，不加限制会一次拉全表
+    # TODO-2
+    if sql.endswith(";"): sql = sql[:-1].strip()
+    if not re.search(r"\blimit\b", sql, re.I): sql = sql + f" LIMIT {limit}"
+    # ---- 第 3 步：连库执行并收尾 ----
+    # conn = get_conn()
+    # try:
+    #     with conn.cursor() as cur:
+    #         cur.execute(s)
+    #         return cur.fetchall()
+    # finally:
+    #     conn.close()        # 无论成功失败都关，否则连接会攒满
+    # TODO-3
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+    finally:
+        conn.close()
+
 
 
 # ------------------------------------------------------------
