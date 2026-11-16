@@ -159,6 +159,53 @@ def chat(messages, temperature=0.2, debug=False):
     return text, usage
 
 
+def chat_message(messages, tools=None, temperature=0.2, debug=False):
+    """v3 用：调一次模型，返回 (message dict, finish_reason, usage)。
+
+    和 chat() 的区别：
+      - chat() 只关心"回答文字"，适合单向问答
+      - 这里要拿到完整的 message，因为模型可能不回答、而是要求调用工具
+        （message 里会有 tool_calls 字段，finish_reason 会是 "tool_calls"）
+      - tools 不为空时，这次请求会带上工具清单
+
+    thinking 设为 disabled：
+      这些任务（选工具、写 SQL）不需要长思考，关掉更快更便宜；
+      而且思考模式下 tool_choice 只支持 auto，关掉省心。
+    """
+    url = f"{BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "stream": False,
+        "temperature": temperature,
+        "thinking": {"type": "disabled"},
+    }
+    if tools:
+        payload["tools"] = tools          # 工具清单（function schema）
+        payload["tool_choice"] = "auto"   # 让模型自己决定用不用、用哪个
+
+    if debug:
+        print("   [debug] 请求体:", json.dumps(payload, ensure_ascii=False)[:400])
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=TIMEOUT)
+    if resp.status_code == 401:
+        raise RuntimeError("401：API key 不对或没填（检查 Agent/llm_config.py）")
+    if resp.status_code == 402:
+        raise RuntimeError("402：账户余额不足")
+    if resp.status_code == 429:
+        raise RuntimeError("429：请求太频繁，等几秒再重试")
+    if resp.status_code != 200:
+        raise RuntimeError(f"HTTP {resp.status_code}：{resp.text[:300]}")
+
+    data = resp.json()
+    choice = data["choices"][0]
+    return choice["message"], choice.get("finish_reason"), data.get("usage", {})
+
+
 def strip_code_fence(text):
     """模型爱把 SQL 包在 ```sql ... ``` 里，这里把围栏剥掉，只留内容。
 
