@@ -25,16 +25,30 @@
 #   Web 开发的全部核心就是这一条链路：请求进来 -> 路由找函数 -> 函数返回内容。
 # ============================================================
 
-from flask import Flask, jsonify, render_template, request
+from datetime import timedelta
 
-# 编排层：问题 -> SQL -> 审核 -> 数据 -> 解释，整条流水线在 qa.py 里。
-# 注意：import qa 会连带 import llm -> llm_config，所以没填 API key 时
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+
+# v3：编排工作交给 agent.py（工具调用 + 多轮记忆）。
+# qa.py 仍然保留，可以用命令行单独跑，作为 v2（Text2SQL）的对照实现。
+# 注意：import agent 会连带 import llm -> llm_config，所以没填 API key 时
 #       服务会直接启动失败并给出提示（这是故意的，别带着空 key 跑）。
-from qa import run_question
+from agent import run_agent
 
 # Flask(__name__) 的意思是"建一个网站对象，名字叫当前文件"。
 # 这个名字后面用来找 templates/、static/ 目录，现在不用深究。
 app = Flask(__name__)
+
+# session（会话）= Flask 把数据签名后塞进浏览器的 cookie，下次请求再带回来。
+# 签名需要一个密钥：密钥泄露，别人就能伪造你的会话。
+#   生产环境：从环境变量/配置文件读，绝不写死在代码里
+#   学习阶段：先写死一个，但要清楚它只是 dev key
+app.secret_key = "dev-only-change-me-7f3a9c2b"
+
+# 默认情况下，Flask 的 session cookie 是"浏览器会话 cookie"：
+# 浏览器一关就删，对话历史跟着没。设成 permanent 后 cookie 才带过期时间、
+# 存到磁盘，关浏览器再开还能续上（这里给 8 小时）。
+app.permanent_session_lifetime = timedelta(hours=8)
 
 # 让 JSON 里的中文原样输出，而不是 \u6df1\u5733 这种转义。
 # 转义不算错（浏览器/程序都能解回来），但调试时肉眼读中文更直观。
@@ -43,17 +57,56 @@ app.json.ensure_ascii = False
 
 
 # ------------------------------------------------------------
-# ① 可运行的热身示例（里程碑 3 会让你改 index 的 return）
+# ① 首页：v3 的对话入口
 # ------------------------------------------------------------
-# @app.route("/") 是装饰器：把"路径 -> 函数"登记进路由表。
-# 括号里是浏览器地址栏里 127.0.0.1:5000 后面那一段。
-# 函数 return 的字符串，就是浏览器里看到的东西。
 @app.route("/")
 def index():
-    # v2：问题交给 qa.run_question() 走完整条流水线
     q = request.args.get("q", "").strip()
-    data = run_question(q) if q else None
-    return render_template("index.html", title="数据分析 Agent v2", q=q, data=data)
+
+    # 从会话里取"上一轮为止"的对话历史（第一次访问是空列表）
+    history_before = session.get("history", [])
+    session.permanent = True          # 让这份 cookie 带过期时间，关浏览器也别丢
+
+    data = None
+    if q:
+        # TODO（v3-3，就三行）：
+        #   1. 让 agent 带着历史回答问题：
+        #        data = run_agent(q, history=history_before)
+        #   2. 把更新后的历史写回 session（下次请求就能拿到）：
+        #        session["history"] = data.get("history") or history_before
+        #   3. 只留最近 6 条，防止 cookie 越滚越大：
+        #        session["history"] = session["history"][-6:]
+        #   提示：session 的读写像 dict，但它背后是浏览器 cookie（有大小上限，
+        #         大约 4KB）。历史只存 user/assistant 的文本，别把工具结果塞进去。
+        data = run_agent(q, history = history_before)
+        session["history"] = data.get("history") or history_before
+        session["history"] = session["history"][-6:]
+
+    return render_template("index.html", title="数据分析 Agent v3",
+                           q=q, data=data, history_before=history_before)
+
+
+@app.route("/debug-session")
+def debug_session():
+    """调试接口：看看浏览器 cookie 里到底存了什么。
+
+    用法：浏览器打开 http://127.0.0.1:5000/debug-session
+    如果 history_len 一直是 0 或只有 2，说明"写回 session"那一步没成功。
+    """
+    hist = session.get("history", [])
+    return jsonify({
+        "history_len": len(hist),
+        "history": hist,
+        "session_size_bytes": len(str(dict(session))),
+        "permanent": session.permanent,
+    })
+
+
+@app.route("/reset")
+def reset():
+    """清空对话：把 session 里的 history 删掉，再跳回首页。"""
+    session.pop("history", None)
+    return redirect(url_for("index"))
 
 
 @app.route("/ping")
@@ -286,15 +339,24 @@ def echo():
 #   一次提问 = 2 次模型调用 + 2~10 秒。
 #   如果每次启动服务都跑一遍，开发时改一行代码（debug 自动重启）就要花钱、等半天。
 #   所以：启动自检只查"页面结构对不对"，真正的链路用 python Agent\qa.py 单独验。
-def check_v2_page():
-    print("===== v2-3 页面自检（不调模型）=====")
+def check_v3_page():
+    print("===== v3-3 页面自检（不调模型）=====")
     with app.test_client() as client:
+        # 往 session 里塞一段假历史，模拟"已经聊过一轮"的页面
+        with client.session_transaction() as sess:
+            sess["history"] = [{"role": "user", "content": "测试问题"},
+                               {"role": "assistant", "content": "测试回答"}]
         resp = client.get("/")
-    html = resp.get_data(as_text=True)
-    print("① GET / 状态码   :", resp.status_code, "| 期望 200")
-    print('② 有输入框        :', 'name="q"' in html, "| 期望 True")
-    print('③ 有结果区容器    :', 'id="result"' in html, "| 期望 True")
-    print("   完整链路请跑：.venv\\Scripts\\python.exe Agent\\qa.py")
+        html = resp.get_data(as_text=True)
+        reset_resp = client.get("/reset")
+
+    print("① GET / 状态码      :", resp.status_code, "| 期望 200")
+    print('② 有输入框           :', 'name="q"' in html, "| 期望 True")
+    print('③ 有结果区容器       :', 'id="result"' in html, "| 期望 True")
+    print("④ 能渲染历史对话      :", "对话记录" in html, "| 期望 True")
+    print("⑤ 有清空对话链接      :", "清空对话" in html, "| 期望 True")
+    print("⑥ /reset 跳转状态码   :", reset_resp.status_code, "| 期望 302")
+    print("   完整链路请跑：.venv\\Scripts\\python.exe Agent\\agent.py")
     print()
 
 
@@ -304,7 +366,7 @@ if __name__ == "__main__":
     selfcheck()
     check_json_api()
     check_page()
-    check_v2_page()
+    check_v3_page()
     # debug=True：改完代码保存后服务器自动重启，刷新浏览器就能看到新内容；
     #             出错时浏览器里直接显示报错堆栈，对新手非常有用。
     # 注意：debug 模式改代码保存后会自动重启，所以自检可能打印多遍，正常现象。

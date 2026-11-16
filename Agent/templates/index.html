@@ -1,94 +1,87 @@
 <!DOCTYPE html>
 <!--
-  Agent/templates/index.html —— v2 的首页模板
-  注意两点：
-    1. 这个文件必须在 templates/ 目录里，Flask 默认只去那里找模板
-    2. {{ title }}、{{ q }}、{{ data }} 是 Jinja2 的"填空"，由 Python 那边 render_template(...) 填进来
+  Agent/templates/index.html —— v3 的首页模板
+  和 v2 的区别：
+    v2 显示"SQL + 表格 + 解释"，一次问答就结束；
+    v3 是"对话式 Agent"：能连续追问，还能看到模型自己调了哪些工具。
 -->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
-  <!--
-    url_for('static', filename='style.css') 会生成 /static/style.css 这个网址。
-    为什么不直接写 "/static/style.css"：Flask 知道静态文件挂在哪，用函数生成不会写错。
-  -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <h1>{{ title }}</h1>
-  <p>用中文提问，模型会自己写 SQL 去查。比如：哪个用户花钱最多？各城市有效订单总额是多少？</p>
+  <p>可以连续追问，比如先问"哪个用户花钱最多"，再问"那他一共有几笔订单？"</p>
 
-  <!--
-    form 表单 = 收集输入并提交给服务器的容器。
-      method="get"  -> 提交时把数据拼到 URL 后面：/?q=你输入的内容
-      action="/"    -> 提交给哪个地址，这里就是本页
-    input 必须写 name="q"，服务器才知道"这段数据叫 q"
-    button type="submit" 才会触发提交（在输入框里按回车也一样）
-  -->
   <form method="get" action="/">
     <input type="text" name="q" placeholder="输入你的问题" size="50" value="{{ q }}">
     <button type="submit">提问</button>
   </form>
 
-  <p class="hint">首次提问要等 2~10 秒：程序会调两次模型（一次写 SQL、一次解释结果）。</p>
+  <p class="hint">
+    回答要等几秒到十几秒：模型可能连续调几轮工具（查数据 -> 看结果 -> 再决定要不要继续查）。
+  </p>
 
   <hr>
 
   <!-- ============ 结果区 ============
-       data 是 qa.run_question() 返回的 dict，形状固定：
-         {"question": ..., "sql": ..., "rows": ..., "error": ..., "explain": ...}
-       所以模板只做三件事：有 SQL 就显示 SQL、有 error 就显示错误、有 rows 就画表格。
-       （id="result" 这个容器在 style.css 里有样式；没内容时用 :empty 自动隐藏） -->
+       index() 传进来三个东西：
+         q              = 本次的问题
+         history_before = 本次提问之前的对话历史（来自 session）
+         data           = agent.run_agent() 的返回值：
+                          {"question","answer","trace","steps","history","usage"}
+       所以模板分两块渲染：先画"之前聊过什么"，再画"这次的结果"。 -->
   <div id="result">
-    {% if q %}
+
+    {# ---------- ① 之前的对话（证明"记忆"在起作用） ---------- #}
+    {% if history_before %}
+      <h3>对话记录</h3>
+      <div class="transcript">
+        {% for m in history_before %}
+          <p class="{{ 'from-user' if m.role == 'user' else 'from-bot' }}">
+            <strong>{{ "你" if m.role == "user" else "助手" }}：</strong>{{ m.content }}
+          </p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# ---------- ② 本次回答 ---------- #}
+    {% if q and data %}
       <p class="ask">你问的是：{{ q }}</p>
 
-      {# ① 生成的 SQL：用 <details> 折起来，默认展开，用户想看得更细可以点 #}
-      {% if data and data.sql %}
-        <details open>
-          <summary>模型生成的 SQL</summary>
-          <pre><code>{{ data.sql }}</code></pre>
-        </details>
+      {# 工具调用轨迹：让用户看到"模型自己查了数据"，而不是凭空回答 #}
+      {% if data.trace %}
+        <h3>工具调用（{{ data.trace|length }} 次，共 {{ data.steps }} 轮）</h3>
+        {% for t in data.trace %}
+          <div class="tool">
+            <span class="tool-name">{{ t.name }}</span>
+            <code>{{ t.arguments }}</code>
+            <pre class="tool-result">{{ t.result }}</pre>
+          </div>
+        {% endfor %}
+      {% elif data.steps %}
+        <p class="hint">本轮没有调用工具，直接回答（{{ data.steps }} 轮）。</p>
       {% endif %}
 
-      {# ② 出错：被安全闸拦下、SQL 语法错、模型调用失败，都在 error 里 #}
-      {% if data and data.error %}
-        <p class="error">出错了：{{ data.error }}</p>
+      <div class="answer">{{ data.answer }}</div>
 
-      {# ③ 有数据：画表格。列名从第一行的键里拿，行数不定，所以用两层 for #}
-      {% elif data and data.rows %}
-        <table>
-          <thead>
-            <tr>
-              {% for col in data.rows[0].keys() %}
-                <th>{{ col }}</th>
-              {% endfor %}
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in data.rows %}
-              <tr>
-                {% for col in data.rows[0].keys() %}
-                  <td>{{ row[col] }}</td>
-                {% endfor %}
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        <p class="hint">共 {{ data.rows|length }} 行</p>
+    {% elif q %}
+      <p class="hint">
+        没有拿到结果。最常见的原因：index() 里调用 run_agent 的那三行还没写（见 app.py 的 TODO），
+        所以 data 还是 None。其次才去看终端有没有报错。
+      </p>
+    {% endif %}
 
-      {# ④ 查询成功但没数据 #}
-      {% elif data %}
-        <p>查询没有返回数据。</p>
-      {% endif %}
-
-      {# ⑤ 人话解释（第二次模型调用的结果） #}
-      {% if data and data.explain %}
-        <div class="explain"><strong>结论：</strong>{{ data.explain }}</div>
-      {% endif %}
+    {% if data and data.error %}
+      <p class="error">出错了：{{ data.error }}</p>
     {% endif %}
   </div>
+
+  {% if history_before %}
+    <p><a href="{{ url_for('reset') }}">清空对话</a></p>
+  {% endif %}
 </body>
 </html>

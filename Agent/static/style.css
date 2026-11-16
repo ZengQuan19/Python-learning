@@ -190,3 +190,61 @@ tr:last-child td {
   background: #ecfdf3;
   border-left: 4px solid #12b76a;
 }
+
+/* ============ v3 新增：对话记录、工具轨迹、回答卡片 ============ */
+
+/* 历史对话：左边一条竖线，区分"聊过什么"和"这次的结果" */
+.transcript {
+  margin: 8px 0 18px;
+  padding-left: 14px;
+  border-left: 3px solid var(--line);
+}
+
+.from-user,
+.from-bot {
+  margin: 6px 0;
+}
+
+.from-bot {
+  color: #374151;
+}
+
+/* 每次工具调用一张小卡片 */
+.tool {
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* 工具名做成小标签 */
+.tool-name {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+
+.tool-result {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+  background: #eef2f7;
+  color: #374151;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* 最终回答：和 v2 的结论框呼应 */
+.answer {
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: #f0f4ff;
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  white-space: pre-wrap;
+}
