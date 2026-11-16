@@ -123,24 +123,32 @@ def warmup():
 
 
 
-def run_agent(question):
+def run_agent(question,history = None, max_step = 5):
     # TODO: 按上面四步实现
-    messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": question}]
+    history = history or []
+    messages = ([{"role": "system", "content": SYSTEM_PROMPT}] + history
+                + [{"role": "user", "content": question}])
     trace = []
-    msg, finish, usage = chat_message(messages, tools=TOOLS)
-    if msg.get("tool_calls"):
-        messages.append(msg)
-        for call in msg["tool_calls"]:
-            name = call["function"]["name"]
-            args = call["function"]["arguments"]
-            result = call_tool(name, args)
-            trace.append({"name": name, "arguments": args, "result": result})
-            messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
+    max_step = 5
+    for steps in range(1, max_step+1):
         msg, finish, usage = chat_message(messages, tools=TOOLS)
+        if not msg.get("tool_calls"):
+            answer = msg.get("content") or ""
+            new_history = history + [{"role": "user", "content": question},
+                                     {"role": "assistant", "content": answer}]
+            return {"question": question, "answer": answer, "trace": trace, "usage": usage,
+                    "steps": steps, "history": new_history}
+        if msg.get("tool_calls"):
+            messages.append(msg)
+            for call in msg["tool_calls"]:
+                name = call["function"]["name"]
+                args = call["function"]["arguments"]
+                result = call_tool(name, args)
+                trace.append({"name": name, "arguments": args, "result": result})
+                messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
 
     answer = msg.get("content") or ""
-    return {"question": question,"answer": answer, "trace": trace, "usage": usage}
+    return {"question": question,"answer": answer, "trace": trace, "usage": usage, "steps": steps, "history": history}
 
 
 # ------------------------------------------------------------
